@@ -257,13 +257,13 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         )
         resource_table = _format_resource_table(resource_stats)
         trace_links = _format_trace_links(grouped)
-        trace_tables = _format_trace_tables(grouped)
+        # trace_tables = _format_trace_tables(grouped)
 
         final = (
             f"{summary}\n{'=' * len(summary)}\n\n"
             f"Top resources by total duration\n{resource_table}\n\n"
             f"Trace links\n{trace_links}\n\n"
-            f"Top spans per trace\n{trace_tables}"
+            # f"Top spans per trace\n{trace_tables}"
         )
 
         return CallToolResult(content=[TextContent(type="text", text=final)], isError=False)
