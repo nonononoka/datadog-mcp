@@ -58,16 +58,19 @@ def _extract_span(span: Dict[str, Any]) -> Dict[str, Any]:
 
     meta = merged.get("meta") if isinstance(merged.get("meta"), dict) else {}
 
+    custom = merged.get("custom") if isinstance(merged.get("custom"), dict) else {}
+
     return {
         "trace_id": merged.get("trace_id") or meta.get("trace_id") or span.get("trace_id") or "",
         "span_id": merged.get("span_id") or meta.get("span_id") or span.get("id") or "",
         "service": merged.get("service") or meta.get("service") or "",
         "resource": merged.get("resource") or merged.get("resource_name") or meta.get("resource_name") or "",
-        "operation": merged.get("name") or merged.get("operation_name") or meta.get("operation_name") or "",
-        "duration_ms": _as_ms(
-            (merged.get("custom") or {}).get("duration") if isinstance(merged.get("custom"), dict) else None
-        )
-        or _as_ms(merged.get("duration")),
+        "operation": custom.get("operation")
+        or merged.get("name")
+        or merged.get("operation_name")
+        or meta.get("operation_name")
+        or "",
+        "duration_ms": _as_ms(custom.get("duration")) or _as_ms(merged.get("duration")),
     }
 
 
@@ -82,8 +85,10 @@ def _group_top_spans(spans: List[Dict[str, Any]]) -> Tuple[Dict[str, List[Dict[s
             continue
         grouped.setdefault(tid, []).append(span)
 
+        op = span.get("operation") or "(unknown)"
         res = span.get("resource") or "(unknown)"
-        stats = resource_stats.setdefault(res, {"count": 0, "total_ms": 0.0})
+        key = (op, res)
+        stats = resource_stats.setdefault(key, {"operation": op, "resource": res, "count": 0, "total_ms": 0.0})
         stats["count"] += 1
         if span.get("duration_ms") is not None:
             stats["total_ms"] += span["duration_ms"]
@@ -91,16 +96,17 @@ def _group_top_spans(spans: List[Dict[str, Any]]) -> Tuple[Dict[str, List[Dict[s
     return grouped, resource_stats
 
 
-def _format_resource_table(resource_stats: Dict[str, Dict[str, Any]]) -> str:
+def _format_resource_table(resource_stats: Dict[Tuple[str, str], Dict[str, Any]]) -> str:
     if not resource_stats:
         return "No span data to summarize."
 
     rows = []
-    for res, stats in resource_stats.items():
+    for (op, res), stats in resource_stats.items():
         total = stats["total_ms"]
         count = stats["count"]
         avg = total / count if count else 0
-        rows.append((res, count, total, avg))
+        resource_label = f"{op} {res}"
+        rows.append((resource_label, count, total, avg))
 
     rows.sort(key=lambda r: r[2], reverse=True)  # sort by total_ms
 
