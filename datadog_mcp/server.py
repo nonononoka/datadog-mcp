@@ -14,7 +14,7 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, ServerCapabilities, TextContent
 
-from .tools import get_fingerprints, list_pipelines, get_logs, get_teams, get_metrics, get_metric_fields, get_metric_field_values, list_metrics, list_service_definitions, get_service_definition, list_monitors, list_slos, get_logs_field_values, get_heavy_spans, analyze_resource_bottlenecks
+from .tools import get_fingerprints, list_pipelines, get_logs, get_teams, get_metrics, get_metric_fields, get_metric_field_values, list_metrics, list_service_definitions, get_service_definition, list_monitors, list_slos, get_logs_field_values, analyze_resource_bottlenecks
 
 # Configure logging
 logging.basicConfig(
@@ -40,10 +40,6 @@ TOOLS = {
     "get_logs": {
         "definition": get_logs.get_tool_definition,
         "handler": get_logs.handle_call,
-    },
-    "get_heavy_spans": {
-        "definition": get_heavy_spans.get_tool_definition,
-        "handler": get_heavy_spans.handle_call,
     },
     "analyze_resource_bottlenecks": {
         "definition": analyze_resource_bottlenecks.get_tool_definition,
