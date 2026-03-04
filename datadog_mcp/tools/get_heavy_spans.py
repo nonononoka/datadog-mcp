@@ -87,9 +87,11 @@ def _extract_span_info(spans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     results = []
     for span in spans:
         attrs = span.get("attributes", {}) or {}
-        meta = attrs.get("meta") if isinstance(attrs.get("meta"), dict) else {}
+        inner_attrs = attrs.get("attributes", {}) if isinstance(attrs.get("attributes"), dict) else {}
+        merged = {**attrs, **inner_attrs}
+        meta = merged.get("meta") if isinstance(merged.get("meta"), dict) else {}
 
-        duration = attrs.get("duration")
+        duration = merged.get("duration")
         duration_ms = None
         if duration is not None:
             # Datadog stores span durations in nanoseconds; fall back to raw ms when small
@@ -97,13 +99,13 @@ def _extract_span_info(spans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         results.append(
             {
-                "trace_id": attrs.get("trace_id") or meta.get("trace_id") or span.get("trace_id", ""),
-                "span_id": attrs.get("span_id") or meta.get("span_id") or span.get("id", ""),
-                "service": attrs.get("service") or meta.get("service") or "",
-                "resource": attrs.get("resource") or attrs.get("resource_name") or meta.get("resource_name") or "",
-                "operation": attrs.get("name") or attrs.get("operation_name") or meta.get("operation_name") or "",
+                "trace_id": merged.get("trace_id") or meta.get("trace_id") or span.get("trace_id", ""),
+                "span_id": merged.get("span_id") or meta.get("span_id") or span.get("id", ""),
+                "service": merged.get("service") or meta.get("service") or "",
+                "resource": merged.get("resource") or merged.get("resource_name") or meta.get("resource_name") or "",
+                "operation": merged.get("name") or merged.get("operation_name") or meta.get("operation_name") or "",
                 "duration_ms": duration_ms,
-                "start": attrs.get("start") or attrs.get("start_time") or meta.get("_timestamp") or "",
+                "start": merged.get("start") or merged.get("start_time") or meta.get("_timestamp") or "",
             }
         )
 
