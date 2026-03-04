@@ -123,7 +123,10 @@ def _extract_span(span: Dict[str, Any]) -> Dict[str, Any]:
         "service": merged.get("service") or meta.get("service") or "",
         "resource": merged.get("resource") or merged.get("resource_name") or meta.get("resource_name") or "",
         "operation": merged.get("name") or merged.get("operation_name") or meta.get("operation_name") or "",
-        "duration_ms": _as_ms(merged.get("duration")),
+        "duration_ms": _as_ms(
+            (merged.get("custom") or {}).get("duration") if isinstance(merged.get("custom"), dict) else None
+        )
+        or _as_ms(merged.get("duration")),
     }
 
 
@@ -217,7 +220,7 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         service = args.get("service", "lips")
         operation_name = args.get("operation_name", "rack.request")
         min_duration_ms = args.get("min_duration_ms", 1000)
-        time_from = args.get("time_from", "now-1h")
+        time_from = args.get("time_from", "now-1d")
         time_to = args.get("time_to", "now")
         heavy_limit = args.get("heavy_limit", 100)
         trace_limit = args.get("trace_limit", 20)

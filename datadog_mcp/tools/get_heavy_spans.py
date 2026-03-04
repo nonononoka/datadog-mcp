@@ -91,11 +91,16 @@ def _extract_span_info(spans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         merged = {**attrs, **inner_attrs}
         meta = merged.get("meta") if isinstance(merged.get("meta"), dict) else {}
 
-        duration = merged.get("duration")
+        # Prefer custom.duration when present, otherwise duration
+        raw_duration = None
+        if isinstance(merged.get("custom"), dict) and "duration" in merged["custom"]:
+            raw_duration = merged["custom"]["duration"]
+        else:
+            raw_duration = merged.get("duration")
+
         duration_ms = None
-        if duration is not None:
-            # Datadog stores span durations in nanoseconds; fall back to raw ms when small
-            duration_ms = duration / 1_000_000 if duration > 10000 else duration
+        if raw_duration is not None:
+            duration_ms = raw_duration / 1_000_000 if raw_duration > 10000 else raw_duration
 
         results.append(
             {
