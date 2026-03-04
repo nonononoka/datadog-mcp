@@ -127,6 +127,9 @@ def _format_trace_tables(grouped: Dict[str, List[Dict[str, Any]]]) -> str:
         res_w = max(len("Resource"), max(len(s.get("resource", "")) for s in spans))
         dur_w = len("Duration(ms)")
 
+        # Datadog APM trace deep link so the user can jump into the UI
+        trace_link = f"https://app.datadoghq.com/apm/trace/{tid}"
+
         header = f"| {'Service':<{service_w}} | {'Resource':<{res_w}} | {'Duration(ms)':>{dur_w}} |"
         sep = f"|{'-' * (service_w + 2)}|{'-' * (res_w + 2)}|{'-' * (dur_w + 2)}|"
         lines = [header, sep]
@@ -136,9 +139,30 @@ def _format_trace_tables(grouped: Dict[str, List[Dict[str, Any]]]) -> str:
             lines.append(
                 f"| {span.get('service',''):<{service_w}} | {span.get('resource',''):<{res_w}} | {dur_str:>{dur_w}} |"
             )
-        parts.append(f"Trace {tid}\n{header}\n{sep}\n" + "\n".join(lines[2:]))
+        parts.append(f"Trace {tid}\nLink: {trace_link}\n{header}\n{sep}\n" + "\n".join(lines[2:]))
 
     return "\n\n".join(parts)
+
+
+def _format_trace_links(grouped: Dict[str, List[Dict[str, Any]]]) -> str:
+    """Render a compact table of trace IDs with their Datadog APM deep links."""
+    if not grouped:
+        return "No traces to display."
+
+    rows = []
+    for tid in grouped.keys():
+        rows.append((tid, f"https://app.datadoghq.com/apm/trace/{tid}"))
+
+    tid_w = max(len("Trace ID"), max(len(t[0]) for t in rows))
+    url_w = len("Link")
+
+    header = f"| {'Trace ID':<{tid_w}} | {'Link':<{url_w}} |"
+    sep = f"|{'-' * (tid_w + 2)}|{'-' * (url_w + 2)}|"
+    lines = [header, sep]
+    for tid, url in rows:
+        lines.append(f"| {tid:<{tid_w}} | {url:<{url_w}} |")
+
+    return "\n".join(lines)
 
 
 async def handle_call(request: CallToolRequest) -> CallToolResult:
@@ -232,9 +256,15 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
             f"window: {time_from} -> {time_to}"
         )
         resource_table = _format_resource_table(resource_stats)
+        trace_links = _format_trace_links(grouped)
         trace_tables = _format_trace_tables(grouped)
 
-        final = f"{summary}\n{'=' * len(summary)}\n\nTop resources by total duration\n{resource_table}\n\nTop spans per trace\n{trace_tables}"
+        final = (
+            f"{summary}\n{'=' * len(summary)}\n\n"
+            f"Top resources by total duration\n{resource_table}\n\n"
+            f"Trace links\n{trace_links}\n\n"
+            f"Top spans per trace\n{trace_tables}"
+        )
 
         return CallToolResult(content=[TextContent(type="text", text=final)], isError=False)
 
