@@ -29,59 +29,7 @@ def get_tool_definition() -> Tool:
                 "resource_name": {
                     "type": "string",
                     "description": "Span resource_name to analyze (exact match).",
-                },
-                "env": {
-                    "type": "string",
-                    "description": "Environment tag to filter (e.g., production, staging).",
-                    "default": "production",
-                },
-                "service": {
-                    "type": "string",
-                    "description": "Service name to filter (e.g., lips).",
-                    "default": "lips",
-                },
-                "operation_name": {
-                    "type": "string",
-                    "description": "operation_name to filter (e.g., rack.request).",
-                    "default": "rack.request",
-                },
-                "min_duration_ms": {
-                    "type": "integer",
-                    "description": "Minimum duration in ms to consider a span heavy.",
-                    "default": 1000,
-                    "minimum": 1,
-                    "maximum": 600000,
-                },
-                "time_from": {
-                    "type": "string",
-                    "description": "Start of window (relative like 'now-1h' or RFC3339).",
-                    "default": "now-1d",
-                },
-                "time_to": {
-                    "type": "string",
-                    "description": "End of window (relative like 'now' or RFC3339).",
-                    "default": "now",
-                },
-                "heavy_limit": {
-                    "type": "integer",
-                    "description": "Max heavy spans to pull when collecting trace IDs.",
-                    "default": 100,
-                    "minimum": 1,
-                    "maximum": 1000,
-                },
-                "trace_limit": {
-                    "type": "integer",
-                    "description": "Max unique trace IDs to expand (prevents giant OR queries).",
-                    "default": 20,
-                    "minimum": 1,
-                    "maximum": 100,
-                },
-                "format": {
-                    "type": "string",
-                    "description": "Output format: table (default) or json.",
-                    "enum": ["table", "json"],
-                    "default": "table",
-                },
+                }
             },
             "additionalProperties": False,
             "required": ["resource_name"],
@@ -204,15 +152,16 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
                 isError=True,
             )
 
-        env = args.get("env", "production")
-        service = args.get("service", "lips")
-        operation_name = args.get("operation_name", "rack.request")
-        min_duration_ms = args.get("min_duration_ms", 1000)
-        time_from = args.get("time_from", "now-1d")
-        time_to = args.get("time_to", "now")
-        heavy_limit = args.get("heavy_limit", 100)
-        trace_limit = args.get("trace_limit", 20)
-        output_format = args.get("format", "table")
+        # Only resource_name comes from the model; all other parameters stay fixed to defaults
+        env = "production"
+        service = "lips"
+        operation_name = "rack.request"
+        min_duration_ms = 1000
+        time_from = "now-1d"
+        time_to = "now"
+        heavy_limit = 100
+        trace_limit = 20
+        output_format = "table"
 
         # Step 1: fetch heavy spans to collect trace IDs
         heavy_query_parts = [
