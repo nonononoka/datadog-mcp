@@ -55,7 +55,7 @@ def get_tool_definition() -> Tool:
                 "time_from": {
                     "type": "string",
                     "description": "Start of window (relative like 'now-1h' or RFC3339).",
-                    "default": "now-1h",
+                    "default": "now-1d",
                 },
                 "time_to": {
                     "type": "string",
