@@ -184,7 +184,7 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         time_from = "now-1d"
         time_to = "now"
         heavy_limit = 100
-        trace_limit = 20
+        trace_limit = 50
         output_format = "table"
 
         # Step 1: fetch heavy spans to collect trace IDs
