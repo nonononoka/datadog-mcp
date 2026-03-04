@@ -148,9 +148,9 @@ def _group_top_spans(spans: List[Dict[str, Any]], per_trace_top: int) -> Tuple[D
             stats["total_ms"] += span["duration_ms"]
 
     # Keep only top N per trace by duration
-    for tid, trace_spans in grouped.items():
-        trace_spans.sort(key=lambda s: (s.get("duration_ms") or 0), reverse=True)
-        grouped[tid] = trace_spans[:per_trace_top]
+    # for tid, trace_spans in grouped.items():
+    #     trace_spans.sort(key=lambda s: (s.get("duration_ms") or 0), reverse=True)
+    #     grouped[tid] = trace_spans[:per_trace_top]
 
     return grouped, resource_stats
 
@@ -280,7 +280,7 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
                 "heavy_query": heavy_query,
                 "trace_query": trace_query,
                 "trace_ids": trace_ids,
-                "per_trace_top": per_trace_top,
+                # "per_trace_top": per_trace_top,
                 "traces": grouped,
                 "resource_stats": resource_stats,
             }
