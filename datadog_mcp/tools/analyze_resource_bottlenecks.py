@@ -76,13 +76,6 @@ def get_tool_definition() -> Tool:
                     "minimum": 1,
                     "maximum": 100,
                 },
-                "per_trace_top": {
-                    "type": "integer",
-                    "description": "How many longest spans to show per trace.",
-                    "default": 3,
-                    "minimum": 1,
-                    "maximum": 10,
-                },
                 "format": {
                     "type": "string",
                     "description": "Output format: table (default) or json.",
@@ -130,7 +123,7 @@ def _extract_span(span: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _group_top_spans(spans: List[Dict[str, Any]], per_trace_top: int) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Dict[str, Any]]]:
+def _group_top_spans(spans: List[Dict[str, Any]]) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Dict[str, Any]]]:
     """Group spans by trace and compute per-trace tops + aggregate resource stats."""
     grouped: Dict[str, List[Dict[str, Any]]] = {}
     resource_stats: Dict[str, Dict[str, Any]] = {}
@@ -146,11 +139,6 @@ def _group_top_spans(spans: List[Dict[str, Any]], per_trace_top: int) -> Tuple[D
         stats["count"] += 1
         if span.get("duration_ms") is not None:
             stats["total_ms"] += span["duration_ms"]
-
-    # Keep only top N per trace by duration
-    # for tid, trace_spans in grouped.items():
-    #     trace_spans.sort(key=lambda s: (s.get("duration_ms") or 0), reverse=True)
-    #     grouped[tid] = trace_spans[:per_trace_top]
 
     return grouped, resource_stats
 
@@ -224,7 +212,6 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         time_to = args.get("time_to", "now")
         heavy_limit = args.get("heavy_limit", 100)
         trace_limit = args.get("trace_limit", 20)
-        per_trace_top = args.get("per_trace_top", 3)
         output_format = args.get("format", "table")
 
         # Step 1: fetch heavy spans to collect trace IDs
@@ -272,7 +259,7 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         all_spans_raw = trace_resp.get("data", []) or []
         all_spans = [_extract_span(s) for s in all_spans_raw]
 
-        grouped, resource_stats = _group_top_spans(all_spans, per_trace_top)
+        grouped, resource_stats = _group_top_spans(all_spans)
 
         if output_format == "json":
             payload = {
@@ -280,7 +267,6 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
                 "heavy_query": heavy_query,
                 "trace_query": trace_query,
                 "trace_ids": trace_ids,
-                # "per_trace_top": per_trace_top,
                 "traces": grouped,
                 "resource_stats": resource_stats,
             }
