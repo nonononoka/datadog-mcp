@@ -199,6 +199,54 @@ async def fetch_logs(
         raise
 
 
+async def fetch_span_events(
+    query: str,
+    time_from: str = "now-1h",
+    time_to: str = "now",
+    limit: int = 100,
+    cursor: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search span events via the v2 spans/events endpoint.
+
+    Args:
+        query: Datadog span search query (e.g., 'env:prod service:web ...').
+        time_from: Start of the time window (relative like 'now-1h' or RFC3339).
+        time_to: End of the time window (relative like 'now' or RFC3339).
+        limit: Max number of events to return (max 1000 per API contract).
+        cursor: Optional pagination cursor for the next page.
+    """
+
+    url = f"{DATADOG_API_URL}/api/v2/spans/events"
+
+    headers = {
+        "Content-Type": "application/json",
+        "DD-API-KEY": DATADOG_API_KEY,
+        "DD-APPLICATION-KEY": DATADOG_APP_KEY,
+    }
+
+    params: Dict[str, Any] = {
+        "filter[query]": query,
+        "filter[from]": time_from,
+        "filter[to]": time_to,
+        "page[limit]": limit,
+    }
+
+    if cursor:
+        params["page[cursor]"] = cursor
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error fetching span events: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching span events: {e}")
+            raise
+
+
 async def fetch_logs_filter_values(
     field_name: str,
     time_range: str = "1h",
