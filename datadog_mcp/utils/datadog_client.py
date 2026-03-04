@@ -3,6 +3,7 @@ Datadog API client utilities
 """
 
 import logging
+import asyncio
 import os
 import re
 from typing import Any, Dict, List, Optional
@@ -207,6 +208,8 @@ async def fetch_span_events(
     cursor: Optional[str] = None,
     auto_paginate: bool = False,
     max_pages: Optional[int] = None,
+    rate_limit_sleep: float = 30.0,
+    rate_limit_max_retries: int = 5,
 ) -> Dict[str, Any]:
     """Search span events via the v2 spans/events endpoint.
 
@@ -218,6 +221,8 @@ async def fetch_span_events(
         cursor: Optional pagination cursor for the next page.
         auto_paginate: When True, keep following cursors until exhaustion (or max_pages).
         max_pages: Optional safety cap for pagination loops; None means no cap.
+        rate_limit_sleep: Seconds to wait before retrying when hitting 429 (fallback when no Retry-After header).
+        rate_limit_max_retries: Number of retries allowed after a 429 response.
     """
 
     url = f"{DATADOG_API_URL}/api/v2/spans/events"
@@ -253,12 +258,27 @@ async def fetch_span_events(
                 params["page[cursor]"] = page_cursor
 
             try:
-                response = await client.get(url, headers=headers, params=params)
+                last_error: Optional[Exception] = None
+                for attempt in range(rate_limit_max_retries + 1):
+                    response = await client.get(url, headers=headers, params=params)
+                    if response.status_code == 429 and attempt < rate_limit_max_retries:
+                        retry_after = response.headers.get("Retry-After")
+                        sleep_seconds = float(retry_after) if retry_after else rate_limit_sleep
+                        logger.warning(
+                            f"Span events hit rate limit (429). Sleeping {sleep_seconds}s before retry "
+                            f"(attempt {attempt + 1}/{rate_limit_max_retries})."
+                        )
+                        await asyncio.sleep(sleep_seconds)
+                        continue
+
+                    response.raise_for_status()
+                    payload = response.json() or {}
+                    # Attach convenience top-level cursor for callers that don't want to dig
+                    payload["next_cursor"] = _extract_next_cursor(payload.get("meta"))
+                    return payload
+
+                # If we exhausted retries on 429, raise the last error or status
                 response.raise_for_status()
-                payload = response.json() or {}
-                # Attach convenience top-level cursor for callers that don't want to dig
-                payload["next_cursor"] = _extract_next_cursor(payload.get("meta"))
-                return payload
             except httpx.HTTPError as e:
                 logger.error(f"HTTP error fetching span events: {e}")
                 raise
