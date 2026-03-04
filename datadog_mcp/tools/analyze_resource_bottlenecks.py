@@ -249,11 +249,13 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
 
         # Step 2: fetch all spans for those trace IDs
         trace_query = " OR ".join([f"trace_id:{tid}" for tid in trace_ids])
+        # Auto-paginate so we don't drop spans when a trace fan-outs past 1000 events.
         trace_resp = await fetch_span_events(
             query=trace_query,
             time_from=time_from,
             time_to=time_to,
             limit=1000,
+            auto_paginate=True,
         )
 
         all_spans_raw = trace_resp.get("data", []) or []

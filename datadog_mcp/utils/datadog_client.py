@@ -205,6 +205,8 @@ async def fetch_span_events(
     time_to: str = "now",
     limit: int = 100,
     cursor: Optional[str] = None,
+    auto_paginate: bool = False,
+    max_pages: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Search span events via the v2 spans/events endpoint.
 
@@ -214,6 +216,8 @@ async def fetch_span_events(
         time_to: End of the time window (relative like 'now' or RFC3339).
         limit: Max number of events to return (max 1000 per API contract).
         cursor: Optional pagination cursor for the next page.
+        auto_paginate: When True, keep following cursors until exhaustion (or max_pages).
+        max_pages: Optional safety cap for pagination loops; None means no cap.
     """
 
     url = f"{DATADOG_API_URL}/api/v2/spans/events"
@@ -224,27 +228,93 @@ async def fetch_span_events(
         "DD-APPLICATION-KEY": DATADOG_APP_KEY,
     }
 
-    params: Dict[str, Any] = {
-        "filter[query]": query,
-        "filter[from]": time_from,
-        "filter[to]": time_to,
-        "page[limit]": limit,
-    }
-
-    if cursor:
-        params["page[cursor]"] = cursor
+    def _extract_next_cursor(meta: Any) -> Optional[str]:
+        """Best-effort extraction of Datadog v2 pagination cursor."""
+        if not isinstance(meta, dict):
+            return None
+        page_info = meta.get("page")
+        pagination_info = meta.get("pagination")
+        if isinstance(page_info, dict):
+            return page_info.get("after") or page_info.get("next_cursor")
+        if isinstance(pagination_info, dict):
+            return pagination_info.get("next_cursor")
+        return None
 
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, headers=headers, params=params)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error fetching span events: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Error fetching span events: {e}")
-            raise
+        async def _fetch_page(page_cursor: Optional[str]) -> Dict[str, Any]:
+            params: Dict[str, Any] = {
+                "filter[query]": query,
+                "filter[from]": time_from,
+                "filter[to]": time_to,
+                "page[limit]": limit,
+            }
+
+            if page_cursor:
+                params["page[cursor]"] = page_cursor
+
+            try:
+                response = await client.get(url, headers=headers, params=params)
+                response.raise_for_status()
+                payload = response.json() or {}
+                # Attach convenience top-level cursor for callers that don't want to dig
+                payload["next_cursor"] = _extract_next_cursor(payload.get("meta"))
+                return payload
+            except httpx.HTTPError as e:
+                logger.error(f"HTTP error fetching span events: {e}")
+                raise
+            except Exception as e:
+                logger.error(f"Error fetching span events: {e}")
+                raise
+
+        # Single page path preserved for backward compatibility
+        if not auto_paginate:
+            return await _fetch_page(cursor)
+
+        all_data: List[Any] = []
+        next_cursor: Optional[str] = cursor
+        combined_meta: Dict[str, Any] = {}
+        combined_links: Dict[str, Any] = {}
+        page_count = 0
+
+        while True:
+            resp = await _fetch_page(next_cursor) or {}
+            page_count += 1
+
+            if not isinstance(resp, dict):
+                logger.error(f"Unexpected span events response type: {type(resp)}")
+                break
+
+            data = resp.get("data", []) or []
+            all_data.extend(data)
+
+            meta = resp.get("meta") or {}
+            links = resp.get("links") or {}
+
+            # Preserve the first page's meta/links as base; they often include request context
+            if not combined_meta and meta:
+                combined_meta = meta.copy()
+            if not combined_links and links:
+                combined_links = links.copy()
+
+            next_cursor = resp.get("next_cursor") or _extract_next_cursor(meta)
+
+            if max_pages is not None and page_count >= max_pages:
+                break
+            if not next_cursor:
+                break
+
+        # Enrich meta with pagination summary
+        page_meta = combined_meta.setdefault("page", {}) if isinstance(combined_meta, dict) else {}
+        if isinstance(page_meta, dict):
+            page_meta["after"] = next_cursor  # Will be None when fully exhausted
+            page_meta["page_count"] = page_count
+            page_meta["returned"] = len(all_data)
+
+        return {
+            "data": all_data,
+            "meta": combined_meta,
+            "links": combined_links,
+        }
 
 
 async def fetch_logs_filter_values(
