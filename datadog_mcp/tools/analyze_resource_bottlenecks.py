@@ -243,6 +243,16 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
 
         grouped, resource_stats = _group_top_spans(all_spans, resource_name)
 
+        # Aggregate endpoint-level stats: spans that represent the full endpoint request
+        endpoint_total = 0.0
+        endpoint_count = 0
+        for span in all_spans:
+            if span.get("resource") == resource_name and span.get("operation") == "request":
+                if span.get("duration_ms") is not None:
+                    endpoint_total += span["duration_ms"]
+                    endpoint_count += 1
+        endpoint_avg = (endpoint_total / endpoint_count) if endpoint_count else 0.0
+
         if output_format == "json":
             payload = {
                 "resource_name": resource_name,
@@ -251,6 +261,11 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
                 "trace_ids": trace_ids,
                 "traces": grouped,
                 "resource_stats": resource_stats,
+                "endpoint_summary": {
+                    "total_ms": endpoint_total,
+                    "count": endpoint_count,
+                    "avg_ms": endpoint_avg,
+                },
             }
             return CallToolResult(
                 content=[TextContent(type="text", text=json.dumps(payload, indent=2))],
@@ -260,7 +275,8 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         # Table/text output
         summary = (
             f"Resource '{resource_name}' | heavy spans: {len(heavy_spans)} | traces expanded: {len(grouped)} | "
-            f"window: {time_from} -> {time_to}"
+            f"window: {time_from} -> {time_to} | endpoint_total_ms: {endpoint_total:.1f} "
+            f"| endpoint_count: {endpoint_count} | endpoint_avg_ms: {endpoint_avg:.1f}"
         )
         resource_table = _format_resource_table(resource_stats)
         trace_links = _format_trace_links(grouped)
