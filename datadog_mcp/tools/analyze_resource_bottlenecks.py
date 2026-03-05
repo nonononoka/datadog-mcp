@@ -45,9 +45,7 @@ def _as_ms(duration_ns: Any) -> float:
         duration_ns = float(duration_ns)
     except Exception:
         return None
-    # Heuristic: if the value looks already like ms (small), don't divide again.
-    return duration_ns / 1_000_000 if duration_ns > 10_000 else duration_ns
-
+    return duration_ns / 1_000_000
 
 def _extract_span(span: Dict[str, Any]) -> Dict[str, Any]:
     # Span events sometimes nest real data under attributes["attributes"]
