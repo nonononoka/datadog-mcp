@@ -72,7 +72,7 @@ def _extract_span(span: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _group_top_spans(spans: List[Dict[str, Any]]) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Dict[str, Any]]]:
+def _group_top_spans(spans: List[Dict[str, Any]], resource_name) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Dict[str, Any]]]:
     """Group spans by trace and compute per-trace tops + aggregate resource stats."""
     grouped: Dict[str, List[Dict[str, Any]]] = {}
     resource_stats: Dict[str, Dict[str, Any]] = {}
@@ -85,6 +85,8 @@ def _group_top_spans(spans: List[Dict[str, Any]]) -> Tuple[Dict[str, List[Dict[s
 
         op = span.get("operation") or "(unknown)"
         res = span.get("resource") or "(unknown)"
+        if res == resource_name:
+            continue
         key = (op, res)
         stats = resource_stats.setdefault(key, {"operation": op, "resource": res, "count": 0, "total_ms": 0.0})
         stats["count"] += 1
@@ -107,6 +109,7 @@ def _format_resource_table(resource_stats: Dict[Tuple[str, str], Dict[str, Any]]
         rows.append((resource_label, count, total, avg))
 
     rows.sort(key=lambda r: r[2], reverse=True)  # sort by total_ms
+    rows = rows[:20]  # keep top 20 by total_ms
 
     res_w = max(len("Resource"), max(len(r[0]) for r in rows))
     cnt_w = len("Count")
@@ -238,7 +241,7 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         all_spans_raw = trace_resp.get("data", []) or []
         all_spans = [_extract_span(s) for s in all_spans_raw]
 
-        grouped, resource_stats = _group_top_spans(all_spans)
+        grouped, resource_stats = _group_top_spans(all_spans, resource_name)
 
         if output_format == "json":
             payload = {
@@ -261,13 +264,11 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         )
         resource_table = _format_resource_table(resource_stats)
         trace_links = _format_trace_links(grouped)
-        # trace_tables = _format_trace_tables(grouped)
 
         final = (
             f"{summary}\n{'=' * len(summary)}\n\n"
             f"Top resources by total duration\n{resource_table}\n\n"
             f"Trace links\n{trace_links}\n\n"
-            # f"Top spans per trace\n{trace_tables}"
         )
 
         return CallToolResult(content=[TextContent(type="text", text=final)], isError=False)
