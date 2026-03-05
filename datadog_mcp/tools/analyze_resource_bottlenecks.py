@@ -61,6 +61,7 @@ def _extract_span(span: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "trace_id": merged.get("trace_id") or meta.get("trace_id") or span.get("trace_id") or "",
         "span_id": merged.get("span_id") or meta.get("span_id") or span.get("id") or "",
+        "parent_id": merged.get("parent_id") or meta.get("parent_id") or "",
         "service": merged.get("service") or meta.get("service") or "",
         "resource": merged.get("resource") or merged.get("resource_name") or meta.get("resource_name") or "",
         "operation": custom.get("operation")
@@ -85,10 +86,20 @@ def _group_top_spans(spans: List[Dict[str, Any]], resource_name) -> Tuple[Dict[s
 
         op = span.get("operation") or "(unknown)"
         res = span.get("resource") or "(unknown)"
+        parent_op = span.get("parent_operation") or "(unknown)"
+        parent_res = span.get("parent_resource") or "(unknown)"
         if res == resource_name:
             continue
-        key = (op, res)
-        stats = resource_stats.setdefault(key, {"operation": op, "resource": res, "count": 0, "total_ms": 0.0})
+        key = (op, res, parent_op, parent_res)
+        stats = resource_stats.setdefault(
+            key,
+            {
+                "operation": op,
+                "resource": res,
+                "count": 0,
+                "total_ms": 0.0,
+            },
+        )
         stats["count"] += 1
         if span.get("duration_ms") is not None:
             stats["total_ms"] += span["duration_ms"]
@@ -96,16 +107,16 @@ def _group_top_spans(spans: List[Dict[str, Any]], resource_name) -> Tuple[Dict[s
     return grouped, resource_stats
 
 
-def _format_resource_table(resource_stats: Dict[Tuple[str, str], Dict[str, Any]]) -> str:
+def _format_resource_table(resource_stats: Dict[Tuple[str, str, str, str], Dict[str, Any]]) -> str:
     if not resource_stats:
         return "No span data to summarize."
 
     rows = []
-    for (op, res), stats in resource_stats.items():
+    for (op, res, parent_op, parent_res), stats in resource_stats.items():
         total = stats["total_ms"]
         count = stats["count"]
         avg = total / count if count else 0
-        resource_label = f"{op} {res}"
+        resource_label = f"{op} {res} ← {parent_op} {parent_res}"
         rows.append((resource_label, count, total, avg))
 
     rows.sort(key=lambda r: r[2], reverse=True)  # sort by total_ms
@@ -240,6 +251,14 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
 
         all_spans_raw = trace_resp.get("data", []) or []
         all_spans = [_extract_span(s) for s in all_spans_raw]
+
+        # Populate parent resource/operation by linking parent_id to span_id
+        span_by_id = {s.get("span_id"): s for s in all_spans if s.get("span_id")}
+        for span in all_spans:
+            parent_id = span.get("parent_id")
+            parent = span_by_id.get(parent_id) if parent_id else None
+            span["parent_resource"] = parent.get("resource", "") if parent else ""
+            span["parent_operation"] = parent.get("operation", "") if parent else ""
 
         grouped, resource_stats = _group_top_spans(all_spans, resource_name)
 
