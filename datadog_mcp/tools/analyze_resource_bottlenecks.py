@@ -135,7 +135,7 @@ def _format_resource_table(resource_stats: Dict[Tuple[str, str, str, str, str, s
     avg_w = len("Avg(ms)")
 
     header = (
-        f"| {'Span':<{child_w}} | {'Called from':<{parent_w}} | "
+        f"| {'Span':<{child_w}} | {'Caller Span':<{parent_w}} | "
         f"{'Count':>{cnt_w}} | {'Total(ms)':>{tot_w}} | {'Avg(ms)':>{avg_w}} |"
     )
     sep = (
