@@ -217,7 +217,7 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         min_duration_ms = 1000
         time_from = "now-1d"
         time_to = "now"
-        heavy_limit = 100
+        heavy_limit = 50
         trace_limit = 50
         output_format = "table"
 
@@ -310,7 +310,7 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
 
         # Table/text output
         summary = (
-            f"Resource '{resource_name}' | heavy spans: {len(heavy_spans)} | traces expanded: {len(grouped)} | "
+            f"Resource '{resource_name}' | traces expanded: {len(grouped)} | "
             f"window: {time_from} -> {time_to} | endpoint_total_ms: {endpoint_total:.1f} "
             f"| endpoint_count: {endpoint_count} | endpoint_avg_ms: {endpoint_avg:.1f}"
         )
