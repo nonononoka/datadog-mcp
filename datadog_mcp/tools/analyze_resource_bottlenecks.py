@@ -116,26 +116,31 @@ def _format_resource_table(resource_stats: Dict[Tuple[str, str, str, str, str, s
     if not resource_stats:
         return "No span data to summarize."
 
+    def _truncate(text: str, max_len: int = 300) -> str:
+        if len(text) <= max_len:
+            return text
+        return text[: max_len - 3] + "..."
+
     rows = []
     for (svc, op, res, parent_svc, parent_op, parent_res), stats in resource_stats.items():
         total = stats["total_ms"]
         count = stats["count"]
         avg = total / count if count else 0
-        child_label = f"{svc}:{op} {res}"
-        parent_label = f"{parent_svc}:{parent_op} {parent_res}"
+        child_label = _truncate(f"{svc}:{op} {res}")
+        parent_label = _truncate(f"{parent_svc}:{parent_op} {parent_res}")
         rows.append((child_label, parent_label, count, total, avg))
 
     rows.sort(key=lambda r: r[3], reverse=True)  # sort by total_ms
     rows = rows[:20]  # keep top 20 by total_ms
 
-    child_w = max(len("Span"), max(len(r[0]) for r in rows))
-    parent_w = max(len("Called from"), max(len(r[1]) for r in rows))
+    child_w = min(300, max(len("Called Span"), max(len(r[0]) for r in rows)))
+    parent_w = min(300, max(len("Caller Span"), max(len(r[1]) for r in rows)))
     cnt_w = len("Count")
     tot_w = len("Total(ms)")
     avg_w = len("Avg(ms)")
 
     header = (
-        f"| {'Span':<{child_w}} | {'Caller Span':<{parent_w}} | "
+        f"| {'Called Span':<{child_w}} | {'Caller Span':<{parent_w}} | "
         f"{'Count':>{cnt_w}} | {'Total(ms)':>{tot_w}} | {'Avg(ms)':>{avg_w}} |"
     )
     sep = (
