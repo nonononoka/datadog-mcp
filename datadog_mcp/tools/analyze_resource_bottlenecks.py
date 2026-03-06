@@ -73,7 +73,9 @@ def _extract_span(span: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _group_top_spans(spans: List[Dict[str, Any]], resource_name) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Dict[str, Any]]]:
+def _group_top_spans(
+    spans: List[Dict[str, Any]], resource_name
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[Tuple[str, str, str, str, str, str], Dict[str, Any]]]:
     """Group spans by trace and compute per-trace tops + aggregate resource stats."""
     grouped: Dict[str, List[Dict[str, Any]]] = {}
     resource_stats: Dict[str, Dict[str, Any]] = {}
@@ -84,16 +86,19 @@ def _group_top_spans(spans: List[Dict[str, Any]], resource_name) -> Tuple[Dict[s
             continue
         grouped.setdefault(tid, []).append(span)
 
+        svc = span.get("service") or "(unknown)"
         op = span.get("operation") or "(unknown)"
         res = span.get("resource") or "(unknown)"
+        parent_svc = span.get("parent_service") or "(unknown)"
         parent_op = span.get("parent_operation") or "(unknown)"
         parent_res = span.get("parent_resource") or "(unknown)"
         if res == resource_name:
             continue
-        key = (op, res, parent_op, parent_res)
+        key = (svc, op, res, parent_svc, parent_op, parent_res)
         stats = resource_stats.setdefault(
             key,
             {
+                "service": svc,
                 "operation": op,
                 "resource": res,
                 "count": 0,
@@ -107,31 +112,42 @@ def _group_top_spans(spans: List[Dict[str, Any]], resource_name) -> Tuple[Dict[s
     return grouped, resource_stats
 
 
-def _format_resource_table(resource_stats: Dict[Tuple[str, str, str, str], Dict[str, Any]]) -> str:
+def _format_resource_table(resource_stats: Dict[Tuple[str, str, str, str, str, str], Dict[str, Any]]) -> str:
     if not resource_stats:
         return "No span data to summarize."
 
     rows = []
-    for (op, res, parent_op, parent_res), stats in resource_stats.items():
+    for (svc, op, res, parent_svc, parent_op, parent_res), stats in resource_stats.items():
         total = stats["total_ms"]
         count = stats["count"]
         avg = total / count if count else 0
-        resource_label = f"{op} {res} ← {parent_op} {parent_res}"
-        rows.append((resource_label, count, total, avg))
+        child_label = f"{svc}:{op} {res}"
+        parent_label = f"{parent_svc}:{parent_op} {parent_res}"
+        rows.append((child_label, parent_label, count, total, avg))
 
-    rows.sort(key=lambda r: r[2], reverse=True)  # sort by total_ms
+    rows.sort(key=lambda r: r[3], reverse=True)  # sort by total_ms
     rows = rows[:20]  # keep top 20 by total_ms
 
-    res_w = max(len("Resource"), max(len(r[0]) for r in rows))
+    child_w = max(len("Span"), max(len(r[0]) for r in rows))
+    parent_w = max(len("Called from"), max(len(r[1]) for r in rows))
     cnt_w = len("Count")
     tot_w = len("Total(ms)")
     avg_w = len("Avg(ms)")
 
-    header = f"| {'Resource':<{res_w}} | {'Count':>{cnt_w}} | {'Total(ms)':>{tot_w}} | {'Avg(ms)':>{avg_w}} |"
-    sep = f"|{'-' * (res_w + 2)}|{'-' * (cnt_w + 2)}|{'-' * (tot_w + 2)}|{'-' * (avg_w + 2)}|"
+    header = (
+        f"| {'Span':<{child_w}} | {'Called from':<{parent_w}} | "
+        f"{'Count':>{cnt_w}} | {'Total(ms)':>{tot_w}} | {'Avg(ms)':>{avg_w}} |"
+    )
+    sep = (
+        f"|{'-' * (child_w + 2)}|{'-' * (parent_w + 2)}|"
+        f"{'-' * (cnt_w + 2)}|{'-' * (tot_w + 2)}|{'-' * (avg_w + 2)}|"
+    )
     lines = [header, sep]
-    for res, count, total, avg in rows:
-        lines.append(f"| {res:<{res_w}} | {count:>{cnt_w}} | {total:>{tot_w}.1f} | {avg:>{avg_w}.1f} |")
+    for child, parent, count, total, avg in rows:
+        lines.append(
+            f"| {child:<{child_w}} | {parent:<{parent_w}} | "
+            f"{count:>{cnt_w}} | {total:>{tot_w}.1f} | {avg:>{avg_w}.1f} |"
+        )
     return "\n".join(lines)
 
 
@@ -257,6 +273,7 @@ async def handle_call(request: CallToolRequest) -> CallToolResult:
         for span in all_spans:
             parent_id = span.get("parent_id")
             parent = span_by_id.get(parent_id) if parent_id else None
+            span["parent_service"] = parent.get("service", "") if parent else ""
             span["parent_resource"] = parent.get("resource", "") if parent else ""
             span["parent_operation"] = parent.get("operation", "") if parent else ""
 
